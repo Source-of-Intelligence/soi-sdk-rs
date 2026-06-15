@@ -1,0 +1,30 @@
+[package]
+name = "soi-sdk"
+version = "2.0.0"
+edition = "2021"
+description = "SOI (Source of Intelligence) WASM plugin SDK for Rust"
+license = "MIT"
+
+[lib]
+crate-type = ["lib", "cdylib"]
+name = "soi_sdk"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+# tinyvec is useful for no-std alloc scenarios; we keep this std by default
+anyhow = { version = "1", optional = true }
+
+[features]
+default = []
+anyhow-log = ["anyhow"]
+
+[profile.release]
+opt-level = "z"
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true
+
+[workspace]
+members = [".", "examples/hello", "examples/xlsx2md"]
