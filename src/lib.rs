@@ -67,6 +67,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 use std::cell::RefCell;
 use std::collections::BTreeMap;
+use std::rc::Rc;
 
 // ---------------------------------------------------------------------------
 // Sandbox capability constants (mirrors soi-sdk Go API)
@@ -403,7 +404,7 @@ pub struct ToolDef {
     pub uses: Vec<String>,
 }
 
-pub type ToolHandler = fn(Value, &SandboxContext) -> Result<Value, String>;
+pub type ToolHandler = Rc<dyn Fn(Value, &SandboxContext) -> Result<Value, String>>;
 pub type SimpleHandler = fn(Value) -> Result<Value, String>;
 
 /// A single registered tool.
@@ -453,6 +454,10 @@ pub fn register_tool(def: ToolDef, handler: ToolHandler) {
     REGISTRY.with(|r| {
         r.borrow_mut().tools.insert(name, RegisteredTool { handler, def });
     });
+}
+
+pub fn register_tool_fn(def: ToolDef, handler: fn(Value, &SandboxContext) -> Result<Value, String>) {
+    register_tool(def, Rc::new(handler));
 }
 
 pub fn set_plugin_uses(uses: &[&str]) {
@@ -573,14 +578,19 @@ impl Builder {
         name: impl Into<String>,
         kind: impl Into<String>,
         required: bool,
-        default: impl Into<Option<Value>>,
+        default: impl Into<Value>,
         description: impl Into<String>,
     ) -> Self {
+        let default_val = default.into();
+        let default_opt = match default_val {
+            Value::Null => None,
+            v => Some(v),
+        };
         self.def.parameters.push(ParamDef {
             name: name.into(),
             kind: kind.into(),
             required,
-            default: default.into(),
+            default: default_opt,
             description: description.into(),
             r#enum: Vec::new(),
         });
@@ -665,12 +675,12 @@ impl Builder {
         self
     }
 
-    pub fn register(self, handler: ToolHandler) {
-        register_tool(self.def, handler);
+    pub fn register(self, handler: fn(Value, &SandboxContext) -> Result<Value, String>) {
+        register_tool_fn(self.def, handler);
     }
 
     pub fn register_simple(self, simple: SimpleHandler) {
-        register_tool(self.def, move |args, _ctx| simple(args));
+        register_tool(self.def, Rc::new(move |args, _ctx| simple(args)));
     }
 }
 
@@ -701,7 +711,7 @@ pub fn execute_request(json_bytes: &[u8]) -> Vec<u8> {
     let ctx = SandboxContext::new(req.sandbox_root, WasmHostApi);
     let tools = REGISTRY.with(|r| r.borrow().tools.keys().cloned().collect::<Vec<_>>());
     let handler = REGISTRY.with(|r| {
-        r.borrow().tools.get(&req.tool).map(|t| (t.handler, t.def.clone()))
+        r.borrow().tools.get(&req.tool).map(|t| (t.handler.clone(), t.def.clone()))
     });
 
     if let Some((handler, _def)) = handler {
@@ -913,10 +923,9 @@ pub fn generate_skill_yaml(cfg: &SkillConfig) -> String {
 #[macro_export]
 macro_rules! soi_plugin {
     ( tools: [$($builder:expr),* $(,)?] $(, uses: [$($uses:expr),* $(,)?] )? $(,)? ) => {
-        #[allow(unused_imports)]
-        use $crate::{Builder, SandboxContext};
-
         fn __soi_register_tools() {
+            #[allow(unused_imports)]
+            use $crate::{Builder, SandboxContext};
             $( { let _ = $builder; } )*
             $( $crate::set_plugin_uses(&[$($uses),*]); )?
         }
