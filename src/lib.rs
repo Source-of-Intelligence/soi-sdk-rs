@@ -179,54 +179,57 @@ impl Default for WasmHostApi {
 // On the Rust side we use `extern "C"` with the canonical ABI for `wasm32`.
 
 #[cfg(target_family = "wasm")]
+#[link(wasm_import_module = "soi")]
 extern "C" {
-    fn soi_log(level: i32, ptr: u32, len: u32);
+    // Note: pointer parameters use i64 to match the Go SDK (`hostSandboxRead(ptr int64, len int64) int64`).
+    // The Go host packs `(uint64(pointer) << 32) | uint64(length)` in int64, so WASM type is i64.
+    fn soi_log(level: i32, ptr: i64, len: i64);
     fn soi_now() -> i64;
-    fn soi_random(ptr: u32, len: u32) -> i32;
+    fn soi_random(ptr: i64, len: i64) -> i32;
 
-    fn soi_sandbox_read(path_ptr: u32, path_len: u32) -> u64;
-    fn soi_sandbox_write(path_ptr: u32, path_len: u32, data_ptr: u32, data_len: u32) -> i32;
-    fn soi_sandbox_list(path_ptr: u32, path_len: u32) -> u64;
-    fn soi_sandbox_stat(path_ptr: u32, path_len: u32) -> u64;
-    fn soi_sandbox_exec(cmd_ptr: u32, cmd_len: u32) -> u64;
-    fn soi_sandbox_http(req_ptr: u32, req_len: u32) -> u64;
+    fn soi_sandbox_read(path_ptr: i64, path_len: i64) -> i64;
+    fn soi_sandbox_write(path_ptr: i64, path_len: i64, data_ptr: i64, data_len: i64) -> i32;
+    fn soi_sandbox_list(path_ptr: i64, path_len: i64) -> i64;
+    fn soi_sandbox_stat(path_ptr: i64, path_len: i64) -> i64;
+    fn soi_sandbox_exec(cmd_ptr: i64, cmd_len: i64) -> i64;
+    fn soi_sandbox_http(req_ptr: i64, req_len: i64) -> i64;
 }
 
 // We provide stubs for non-WASM targets so that `cargo test` still works on the
 // host platform (so the plugin crate can still compile, but the real behavior is
 // provided by the `soi-executor` runtime).
 #[cfg(not(target_family = "wasm"))]
-unsafe fn soi_log(_level: i32, _ptr: u32, _len: u32) {}
+unsafe fn soi_log(_level: i32, _ptr: i64, _len: i64) {}
 #[cfg(not(target_family = "wasm"))]
 unsafe fn soi_now() -> i64 {
     0
 }
 #[cfg(not(target_family = "wasm"))]
-unsafe fn soi_random(_ptr: u32, _len: u32) -> i32 {
+unsafe fn soi_random(_ptr: i64, _len: i64) -> i32 {
     1
 }
 #[cfg(not(target_family = "wasm"))]
-unsafe fn soi_sandbox_read(_ptr: u32, _len: u32) -> u64 {
+unsafe fn soi_sandbox_read(_ptr: i64, _len: i64) -> i64 {
     0
 }
 #[cfg(not(target_family = "wasm"))]
-unsafe fn soi_sandbox_write(_ptr: u32, _len: u32, _dptr: u32, _dlen: u32) -> i32 {
+unsafe fn soi_sandbox_write(_ptr: i64, _len: i64, _dptr: i64, _dlen: i64) -> i32 {
     1
 }
 #[cfg(not(target_family = "wasm"))]
-unsafe fn soi_sandbox_list(_ptr: u32, _len: u32) -> u64 {
+unsafe fn soi_sandbox_list(_ptr: i64, _len: i64) -> i64 {
     0
 }
 #[cfg(not(target_family = "wasm"))]
-unsafe fn soi_sandbox_stat(_ptr: u32, _len: u32) -> u64 {
+unsafe fn soi_sandbox_stat(_ptr: i64, _len: i64) -> i64 {
     0
 }
 #[cfg(not(target_family = "wasm"))]
-unsafe fn soi_sandbox_exec(_ptr: u32, _len: u32) -> u64 {
+unsafe fn soi_sandbox_exec(_ptr: i64, _len: i64) -> i64 {
     0
 }
 #[cfg(not(target_family = "wasm"))]
-unsafe fn soi_sandbox_http(_ptr: u32, _len: u32) -> u64 {
+unsafe fn soi_sandbox_http(_ptr: i64, _len: i64) -> i64 {
     0
 }
 
@@ -258,7 +261,7 @@ unsafe fn read_linear(_offset: u32, _len: u32) -> &'static [u8] {
 
 impl HostApi for WasmHostApi {
     fn log(&self, level: i32, msg: &str) {
-        unsafe { soi_log(level, msg.as_ptr() as u32, msg.len() as u32) };
+        unsafe { soi_log(level, msg.as_ptr() as i64, msg.len() as i64) };
     }
 
     fn now(&self) -> i64 {
@@ -269,7 +272,7 @@ impl HostApi for WasmHostApi {
         if buf.is_empty() {
             return Ok(());
         }
-        let rc = unsafe { soi_random(buf.as_mut_ptr() as u32, buf.len() as u32) };
+        let rc = unsafe { soi_random(buf.as_mut_ptr() as i64, buf.len() as i64) };
         if rc == 0 {
             Ok(())
         } else {
@@ -278,8 +281,8 @@ impl HostApi for WasmHostApi {
     }
 
     fn sandbox_read(&self, path: &str) -> Result<Vec<u8>, String> {
-        let packed = unsafe { soi_sandbox_read(path.as_ptr() as u32, path.len() as u32) };
-        let (offset, len) = unpack_u64(packed);
+        let packed = unsafe { soi_sandbox_read(path.as_ptr() as i64, path.len() as i64) };
+        let (offset, len) = unpack_u64(packed as u64);
         if len == 0 {
             return Err("sandbox_read: empty response".into());
         }
@@ -290,10 +293,10 @@ impl HostApi for WasmHostApi {
     fn sandbox_write(&self, path: &str, data: &[u8]) -> Result<(), String> {
         let rc = unsafe {
             soi_sandbox_write(
-                path.as_ptr() as u32,
-                path.len() as u32,
-                data.as_ptr() as u32,
-                data.len() as u32,
+                path.as_ptr() as i64,
+                path.len() as i64,
+                data.as_ptr() as i64,
+                data.len() as i64,
             )
         };
         if rc == 0 {
@@ -304,8 +307,8 @@ impl HostApi for WasmHostApi {
     }
 
     fn sandbox_list(&self, path: &str) -> Result<Vec<String>, String> {
-        let packed = unsafe { soi_sandbox_list(path.as_ptr() as u32, path.len() as u32) };
-        let (offset, len) = unpack_u64(packed);
+        let packed = unsafe { soi_sandbox_list(path.as_ptr() as i64, path.len() as i64) };
+        let (offset, len) = unpack_u64(packed as u64);
         let bytes = unsafe { read_linear(offset, len) };
         if bytes.is_empty() {
             return Err("sandbox_list: empty response".into());
@@ -314,8 +317,8 @@ impl HostApi for WasmHostApi {
     }
 
     fn sandbox_stat(&self, path: &str) -> Result<FileInfo, String> {
-        let packed = unsafe { soi_sandbox_stat(path.as_ptr() as u32, path.len() as u32) };
-        let (offset, len) = unpack_u64(packed);
+        let packed = unsafe { soi_sandbox_stat(path.as_ptr() as i64, path.len() as i64) };
+        let (offset, len) = unpack_u64(packed as u64);
         let bytes = unsafe { read_linear(offset, len) };
         if bytes.is_empty() {
             return Err("sandbox_stat: empty response".into());
@@ -324,8 +327,8 @@ impl HostApi for WasmHostApi {
     }
 
     fn sandbox_exec(&self, cmd: &str) -> Result<ExecResult, String> {
-        let packed = unsafe { soi_sandbox_exec(cmd.as_ptr() as u32, cmd.len() as u32) };
-        let (offset, len) = unpack_u64(packed);
+        let packed = unsafe { soi_sandbox_exec(cmd.as_ptr() as i64, cmd.len() as i64) };
+        let (offset, len) = unpack_u64(packed as u64);
         let bytes = unsafe { read_linear(offset, len) };
         if bytes.is_empty() {
             return Err("sandbox_exec: empty response".into());
@@ -335,8 +338,8 @@ impl HostApi for WasmHostApi {
 
     fn sandbox_http(&self, req: &HttpRequest) -> Result<HttpResponse, String> {
         let payload = serde_json::to_vec(req).map_err(|e| e.to_string())?;
-        let packed = unsafe { soi_sandbox_http(payload.as_ptr() as u32, payload.len() as u32) };
-        let (offset, len) = unpack_u64(packed);
+        let packed = unsafe { soi_sandbox_http(payload.as_ptr() as i64, payload.len() as i64) };
+        let (offset, len) = unpack_u64(packed as u64);
         let bytes = unsafe { read_linear(offset, len) };
         if bytes.is_empty() {
             return Err("sandbox_http: empty response".into());

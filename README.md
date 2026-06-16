@@ -66,6 +66,74 @@ static __SOI_INIT: fn() = init;
 The exported `execute(ptr, len)` symbol is provided by the `soi-sdk` crate and
 handles the full request dispatch.
 
+---
+
+## 通过 soi-create / soi-package 使用（推荐）
+
+本 crate 与 `soi-sdk` 目录中的脚手架/打包工具完全集成：
+
+```bash
+# 进入 Go SDK 目录
+cd e:\code\soi\soi-sdk
+
+# 使用脚手架一键生成 Rust 插件项目
+go run ./cmd/soi-create scaffold --name my-plugin --type wasm --compiler rust
+
+# 直接打包（会自动调用 cargo build --release --target wasm32-wasip1）
+go run ./cmd/soi-package --dir ../soi-plugin/my-plugin --compiler rust --skip-sync
+# 输出: dist/my-plugin-1.0.0.zip  （内含 wasm/plugin.wasm + skill.yaml + README）
+```
+
+生成的 `Cargo.toml` 默认从 GitHub 拉取 `soi-sdk`（如本地同时存在
+`soi-sdk-rs/`，`soi-package` 会自动将 git 依赖替换为 path 依赖以启用
+本地调试）。
+
+### 完整命令对照
+
+| 操作 | 命令 |
+|---|---|
+| 生成 Rust 插件脚手架 | `soi-create scaffold --name foo --compiler rust` |
+| 运行单元测试 | `cargo test` |
+| 编译 WASM | `cargo build --release --target wasm32-wasip1` |
+| 打包分发 | `soi-package --dir ./foo --compiler rust` |
+
+### Rust 插件结构
+
+```
+my-plugin/
+├── src/
+│   └── lib.rs         # 工具注册与 handler 函数
+├── Cargo.toml         # [dependencies] soi-sdk = { git = "..." }
+├── skill.yaml         # 插件元数据（名称 / 版本 / runtime 等）
+└── README.md
+```
+
+`src/lib.rs` 中使用 Builder / `soi_plugin!` 宏注册工具：
+
+```rust
+use soi_sdk::{soi_plugin, Builder, SandboxContext};
+use serde_json::Value;
+
+fn hello(args: Value, _ctx: &SandboxContext) -> Result<Value, String> {
+    let name = args.get("name").and_then(|v| v.as_str()).unwrap_or("world");
+    Ok(Value::String(format!("Hello, {}!", name)))
+}
+
+soi_plugin! {
+    tools: [
+        Builder::new("hello")
+            .desc("Say hello")
+            .param("name", "string", true, Value::Null, "Your name")
+            .returns("greeting string")
+            .register(hello),
+    ]
+}
+```
+
+`soi_plugin!` 宏会把 `Builder` 的调用放到 `.init_array` 段中，使插件
+被宿主加载时自动注册工具；`execute(ptr, len)` 导出符号由 crate 自动
+提供，不需要手写。
+
 ## Running on soi-executor
 
 Compile your plugin, then hand the `.wasm` file to `soi-executor` through
