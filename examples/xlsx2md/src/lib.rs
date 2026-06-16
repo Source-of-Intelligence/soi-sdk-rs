@@ -3,6 +3,7 @@
 //! Reads an Excel (.xlsx) file from the sandbox, extracts the sheet table
 //! as a Markdown document, and writes the result back into the sandbox.
 
+use std::collections::BTreeMap;
 use soi_sdk::{Builder, SandboxContext, SANDBOX_FS};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
@@ -128,20 +129,20 @@ fn parse_sheet(xml: &str) -> Option<String> {
 }
 
 fn init() {
-    let mut ex_input = Map::new();
+    let mut ex_input = BTreeMap::new();
     ex_input.insert("source".into(), Value::String("in.xlsx".into()));
     Builder::new("xlsx_to_md")
         .desc("读取 Excel 文件 (.xlsx)，转换为 Markdown 格式并写入输出文件")
         .param("source", "string", true, Value::Null, "沙箱中 Excel 文件的路径")
         .param("output", "string", false, Value::Null, "输出的 .md 文件路径（默认与源文件同名）")
-        .returns(r#"object with output_path and success status"#.into())
+        .returns(r#"object with output_path and success status"#)
         .with_sandbox(&[SANDBOX_FS])
         .with_sandbox_subdir("/")
         .with_timeout("30s")
         .trigger_keywords(&["xlsx", "document", "转换表格"])
         .trigger_prefix("/转换表格")
         .trigger_priority(100)
-        .example(ex_input, "out.md".into())
+        .example(ex_input, "out.md")
         .register(xlsx_to_md);
 }
 
