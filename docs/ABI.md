@@ -9,7 +9,7 @@
 | host → plugin | `execute(ptr: u32, len: u32) -> u64`     | plugin export     |
 | plugin → host | `soi_log(level, ptr, len)`               | host import       |
 | plugin → host | `soi_now() -> i64`                       | host import       |
-| plugin → host | `soi_random(ptr, len) -> i32`            | host import       |
+| plugin → host | `soi_random(ptr, len)`                   | host import       |
 | plugin → host | `soi_sandbox_read(ptr, len) -> u64`      | host import       |
 | plugin → host | `soi_sandbox_write(pp, pl, dp, dl) -> i32` | host import     |
 | plugin → host | `soi_sandbox_list(ptr, len) -> u64`      | host import       |

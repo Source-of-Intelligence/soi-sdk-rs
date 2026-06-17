@@ -185,7 +185,7 @@ extern "C" {
     // The Go host packs `(uint64(pointer) << 32) | uint64(length)` in int64, so WASM type is i64.
     fn soi_log(level: i32, ptr: i64, len: i64);
     fn soi_now() -> i64;
-    fn soi_random(ptr: i64, len: i64) -> i32;
+    fn soi_random(ptr: i64, len: i64);
 
     fn soi_sandbox_read(path_ptr: i64, path_len: i64) -> i64;
     fn soi_sandbox_write(path_ptr: i64, path_len: i64, data_ptr: i64, data_len: i64) -> i32;
@@ -205,8 +205,7 @@ unsafe fn soi_now() -> i64 {
     0
 }
 #[cfg(not(target_family = "wasm"))]
-unsafe fn soi_random(_ptr: i64, _len: i64) -> i32 {
-    1
+unsafe fn soi_random(_ptr: i64, _len: i64) {
 }
 #[cfg(not(target_family = "wasm"))]
 unsafe fn soi_sandbox_read(_ptr: i64, _len: i64) -> i64 {
@@ -272,12 +271,8 @@ impl HostApi for WasmHostApi {
         if buf.is_empty() {
             return Ok(());
         }
-        let rc = unsafe { soi_random(buf.as_mut_ptr() as i64, buf.len() as i64) };
-        if rc == 0 {
-            Ok(())
-        } else {
-            Err("host random failed".into())
-        }
+        unsafe { soi_random(buf.as_mut_ptr() as i64, buf.len() as i64) };
+        Ok(())
     }
 
     fn sandbox_read(&self, path: &str) -> Result<Vec<u8>, String> {
